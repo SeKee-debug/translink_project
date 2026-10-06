@@ -33,8 +33,6 @@ def save_snapshot(conn: psycopg.Connection, snapshot: FeedSnapshot) -> bool:
             row = cur.fetchone()
         conn.commit()
     except Exception:
-        # A failed statement leaves the transaction aborted; roll back so the
-        # connection can be used for the next snapshot
         conn.rollback()
         raise
 

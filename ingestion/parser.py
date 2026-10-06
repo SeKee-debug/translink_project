@@ -19,13 +19,11 @@ def parse_feed(raw: RawFetch) -> FeedSnapshot:
     try:
         feed.ParseFromString(raw.content)
     except DecodeError as exc:
-        # e.g. a gateway maintenance page served with HTTP 200; HTML starts with b'<'
         raise ParseError(
             f"Response is not a GTFS-Realtime feed ({len(raw.content)} bytes, "
             f"starts with {raw.content[:40]!r})"
         ) from exc
 
-    # Protobuf reads a missing timestamp as 0 (1970-01-01); catch it before the DB CHECK does
     if feed.header.timestamp == 0:
         raise ParseError("Feed header has no timestamp")
 

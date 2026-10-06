@@ -48,14 +48,12 @@ def run_forever(settings: Settings, once: bool = False) -> None:
                     conn.close()
                 conn = None
             except Exception:
-                # A bug we didn't anticipate: log the full traceback, but keep collecting
                 logger.exception("Unexpected error in this round")
 
             if once:
                 return
 
             # Sleep for the rest of the interval, so rounds start on schedule
-            # regardless of how long this one took
             elapsed = time.monotonic() - started
             time.sleep(max(0.0, POLL_INTERVAL_SECONDS - elapsed))
     finally:

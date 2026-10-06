@@ -6,7 +6,7 @@ from typing import Any
 @dataclass(frozen=True)
 class RawFetch:
     content: bytes
-    fetched_at: datetime  # UTC, recorded the moment the response arrived
+    fetched_at: datetime
 
 
 @dataclass(frozen=True)
