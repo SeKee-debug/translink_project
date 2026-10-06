@@ -1,0 +1,14 @@
+# Secrets: never commit. Copy .env.example to .env and fill it in.
+.env
+
+# Python virtual environment
+venv/
+.venv/
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]
+
+# Editor settings
+.vscode/
+.idea/
