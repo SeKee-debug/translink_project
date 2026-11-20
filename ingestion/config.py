@@ -8,15 +8,15 @@ DEFAULT_FEED_URL = "https://gtfsapi.translink.ca/v3/gtfsrealtime"
 DEFAULT_HTTP_TIMEOUT_SECONDS = 10.0
 USER_AGENT_BASE = "translink-delay-pipeline/0.1"
 
-# Evening rush, America/Vancouver time. 3 h 55 min at one poll per 15 s = 940 requests,
-# under the cap of 950, which is under TransLink's limit of 1,000 requests per day.
+# Evening rush hour, in Vancouver time. 3 h 55 min at one poll every 15 s is 940 requests,
+# which is under our cap of 950, and that's under TransLink's limit of 1,000 a day.
 DEFAULT_COLLECT_START = "15:30"
 DEFAULT_COLLECT_END = "19:25"
 DEFAULT_DAILY_REQUEST_CAP = 950
 
 
 class ConfigError(Exception):
-    """A required setting is missing or invalid."""
+    """Raised when a setting is missing or doesn't make sense."""
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ def load_settings() -> Settings:
             "postgresql://postgres:PASSWORD@localhost:5432/translink_data"
         )
 
-    # Collection window, as HH:MM in America/Vancouver time
+    # The collection window, written as HH:MM in Vancouver time
     raw_start = os.environ.get("COLLECT_START", DEFAULT_COLLECT_START).strip()
     raw_end = os.environ.get("COLLECT_END", DEFAULT_COLLECT_END).strip()
     try:
@@ -79,7 +79,7 @@ def load_settings() -> Settings:
             f"COLLECT_START and COLLECT_END must look like HH:MM, got {raw_start!r} and {raw_end!r}"
         ) from None
     if collect_start >= collect_end:
-        # A window that crosses midnight (e.g. 22:00-02:00) isn't supported
+        # I didn't add support for a window that goes past midnight (like 22:00-02:00)
         raise ConfigError(
             f"COLLECT_START ({raw_start}) must be earlier than COLLECT_END ({raw_end})"
         )

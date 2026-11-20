@@ -1,7 +1,8 @@
-# Loads TransLink's GTFS static files into the static schema. Run from the project root:
+# Loads TransLink's GTFS static files (routes, stops, trips) into the static schema.
+# Run it from the project folder:
 #   python -m ingestion.load_static data/gtfs_static/2026-10-06
 #
-# All three tables are replaced in one transaction: either every file loads, or nothing changes.
+# All three tables get replaced in one transaction, so either every file loads or nothing changes.
 import argparse
 import logging
 from logging.handlers import RotatingFileHandler
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
-# Order matters: routes before trips, because of the trips.route_id foreign key
+# Routes have to load before trips, because trips.route_id is a foreign key to routes
 FILES = [
     ("routes", "routes.txt"),
     ("stops", "stops.txt"),
@@ -25,17 +26,18 @@ FILES = [
 
 
 def read_header(path: Path) -> list[str]:
-    # utf-8-sig strips a byte-order mark if there is one, so the first column
-    # isn't silently named "\ufeffroute_id"
+    # utf-8-sig gets rid of the invisible byte-order mark some CSV files start with. Without it
+    # the first column would secretly be called "\ufeffroute_id"
     with open(path, encoding="utf-8-sig") as f:
         return f.readline().strip().split(",")
 
 
 def copy_file(cur: psycopg.Cursor, table: str, path: Path) -> int:
-    """COPY one CSV file into static.<table>. Returns the number of rows loaded."""
-    # COPY matches by position, so name the columns from the file's own header. If TransLink
-    # adds a column the table doesn't have, this fails loudly instead of shifting data.
-    # Table and column names come from this code and TransLink's header, never user input.
+    """Loads one CSV file into static.<table> with COPY and returns how many rows went in."""
+    # COPY matches columns by position, so I pass in the column names from the file's own header.
+    # If TransLink ever adds a column we don't have, this errors out instead of putting data in the
+    # wrong columns. The names come from my code and TransLink's header, not from a user, so the
+    # f-string is fine here.
     cols = ", ".join(read_header(path))
     with cur.copy(f"COPY static.{table} ({cols}) FROM STDIN WITH (FORMAT csv, HEADER true)") as copy:
         with open(path, "rb") as f:
@@ -51,7 +53,7 @@ def load_static(conn: psycopg.Connection, folder: Path) -> None:
 
     try:
         with conn.cursor() as cur:
-            # One statement for all three, so the foreign key doesn't block emptying routes
+            # Truncate all three in one statement, otherwise the foreign key won't let routes be emptied
             cur.execute("TRUNCATE static.trips, static.routes, static.stops")
             for table, filename in FILES:
                 rows = copy_file(cur, table, folder / filename)

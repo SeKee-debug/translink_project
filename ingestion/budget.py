@@ -6,11 +6,11 @@ logger = logging.getLogger(__name__)
 
 
 class DailyBudget:
-    """Counts API requests per calendar day (in `tz`) and refuses once the cap is reached.
+    """Keeps track of how many API requests we've made today (in `tz`) and says no once we hit the cap.
 
-    The count lives in memory, so restarting the process resets it to 0. That's acceptable
-    because the collection window alone keeps a day under the cap; this is a safety net
-    against bugs such as a loop that stops sleeping.
+    The count is only kept in memory, so if the script restarts it goes back to 0. I'm okay with
+    that because the collection window by itself already keeps a day under the cap. This is more
+    of a backup in case of a bug, like the loop forgetting to sleep.
     """
 
     def __init__(self, cap: int, tz: ZoneInfo) -> None:
@@ -21,7 +21,7 @@ class DailyBudget:
         self._warned_today = False
 
     def try_consume(self) -> bool:
-        """True = you may make one request (it is counted now). False = cap reached today."""
+        """Returns True if we can make one more request (it gets counted right away), False if we're at today's cap."""
         today = datetime.now(self.tz).date()
         if today != self.counter_date:
             self.counter_date = today
@@ -38,6 +38,6 @@ class DailyBudget:
                 self._warned_today = True
             return False
 
-        # Count before fetching: a request that fails still reached TransLink
+        # Count it before the fetch, since a request that fails still hits TransLink's server
         self.requests_today += 1
         return True

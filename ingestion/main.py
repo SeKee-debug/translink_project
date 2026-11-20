@@ -1,6 +1,6 @@
-# Entry point for the ingestion pipeline. Run from the project root:
-#   python -m ingestion.main           poll every POLL_INTERVAL_SECONDS during the collection window
-#   python -m ingestion.main --once    run a single round now (ignores the window), then exit
+# Starts the collector. Run it from the project folder:
+#   python -m ingestion.main           polls every POLL_INTERVAL_SECONDS during the collection window
+#   python -m ingestion.main --once    does one round right now (ignores the window) and exits
 import argparse
 import logging
 import time
@@ -20,9 +20,9 @@ from ingestion.repository import save_snapshot
 
 logger = logging.getLogger(__name__)
 
-# TransLink publishes a new feed version every 15 s
+# TransLink puts out a new version of the feed about every 15 s
 POLL_INTERVAL_SECONDS = 15
-# How often to re-check the clock while outside the collection window
+# How often to check the clock again while we're outside the window
 WINDOW_CHECK_SECONDS = 60
 VANCOUVER = ZoneInfo("America/Vancouver")
 
@@ -31,12 +31,12 @@ LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
 
 def in_window(now: dtime, start: dtime, end: dtime) -> bool:
-    """Start is included, end is excluded: 15:30:00 is inside, 19:25:00 is outside."""
+    """The start counts as inside and the end doesn't, so 15:30:00 is in the window and 19:25:00 isn't."""
     return start <= now < end
 
 
 def run_once(conn: psycopg.Connection, settings: Settings) -> bool:
-    """One round of fetch -> parse -> save. Returns True if a new snapshot was saved."""
+    """Does one round of fetch, parse, save. Returns True if a new snapshot got saved."""
     raw = fetch_feed(settings)
     snapshot = parse_feed(raw)
     return save_snapshot(conn, snapshot)
@@ -50,12 +50,12 @@ def run_forever(settings: Settings, once: bool = False) -> None:
         while True:
             started = time.monotonic()
 
-            # --once is a manual test, so it runs immediately whatever the time
+            # --once is just for testing by hand, so it runs right away no matter what time it is
             if not once:
                 inside = in_window(
                     datetime.now(VANCOUVER).time(), settings.collect_start, settings.collect_end
                 )
-                # Log only when the state changes, not on every check
+                # Only log when we go in or out of the window, not on every check
                 if inside != was_in_window:
                     if inside:
                         logger.info(
@@ -68,8 +68,8 @@ def run_forever(settings: Settings, once: bool = False) -> None:
                             "Outside collection window, waiting until %s",
                             settings.collect_start.strftime("%H:%M"),
                         )
-                        # Don't keep an idle connection overnight: if the laptop sleeps, it
-                        # dies silently and the first insert next day would fail
+                        # Close the connection overnight. If the laptop sleeps, it dies without
+                        # us knowing, and then the first insert the next day would fail.
                         if conn is not None:
                             conn.close()
                             conn = None
@@ -86,10 +86,10 @@ def run_forever(settings: Settings, once: bool = False) -> None:
                 if once or budget.try_consume():
                     run_once(conn, settings)
             except (FetchError, ParseError) as exc:
-                # Expected, temporary problems: skip this round, try again next time
+                # These happen sometimes and are usually temporary, so skip this round and try again
                 logger.error("Skipping this round: %s", exc)
             except psycopg.Error as exc:
-                # Database problem: drop the connection so the next round reconnects
+                # Something went wrong with the database. Throw the connection away so the next round makes a new one
                 logger.error(
                     "Database error (%s): %s", type(exc).__name__, str(exc).splitlines()[0]
                 )
@@ -102,7 +102,7 @@ def run_forever(settings: Settings, once: bool = False) -> None:
             if once:
                 return
 
-            # Sleep for the rest of the interval, so rounds start on schedule
+            # Sleep for whatever's left of the interval so each round starts on time
             elapsed = time.monotonic() - started
             time.sleep(max(0.0, POLL_INTERVAL_SECONDS - elapsed))
     finally:
@@ -115,8 +115,8 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="run a single round now, then exit")
     args = parser.parse_args()
 
-    # Same log lines go to the terminal and to logs/ingestion.log.
-    # The file rotates at 5 MB and keeps 5 old copies: at most 30 MB on disk.
+    # Every log line goes to the terminal and to logs/ingestion.log.
+    # The file rotates at 5 MB and keeps 5 old copies, so it never takes up more than 30 MB.
     LOG_DIR.mkdir(exist_ok=True)
     file_handler = RotatingFileHandler(
         LOG_DIR / "ingestion.log", maxBytes=5_000_000, backupCount=5, encoding="utf-8"

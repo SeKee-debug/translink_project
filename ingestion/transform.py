@@ -1,10 +1,11 @@
-# Applies raw snapshots to analytics.stop_arrivals, a batch at a time, oldest first. Run from the project root:
-#   python -m ingestion.transform                                  process everything not yet processed
+# Takes the raw snapshots and applies them to analytics.stop_arrivals, one batch at a time, oldest
+# first. Run it from the project folder:
+#   python -m ingestion.transform                                  processes everything that's left
 #   python -m ingestion.transform --batch-size 5 --max-batches 1   one small batch, for testing
 #
-# Each batch is one transaction: pick the next unprocessed snapshots, upsert their stops, and tick
-# them off in analytics.processed_snapshots. A crash or Ctrl+C rolls back only the current batch,
-# so every snapshot is applied exactly once.
+# Each batch is its own transaction. It picks the next unprocessed snapshots, upserts their stops,
+# and ticks them off in analytics.processed_snapshots. If it crashes or you hit Ctrl+C, only the
+# current batch gets rolled back, so every snapshot gets applied exactly once.
 import argparse
 import logging
 import time
@@ -22,8 +23,8 @@ LOG_DIR = PROJECT_DIR / "logs"
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 UPSERT_SQL = (PROJECT_DIR / "sql" / "transform" / "stop_arrivals_upsert.sql").read_text(encoding="utf-8")
 
-# Anti-join: snapshots with no tick in the checklist. Oldest first, because the upsert's
-# "only if newer" rule assumes batches arrive in time order.
+# Anti-join that grabs the snapshots that aren't ticked off yet. They have to go oldest first,
+# because the upsert only applies data that's newer than what's already stored.
 NEXT_BATCH_SQL = """
     SELECT s.snapshot_id
     FROM raw.feed_snapshots s
@@ -40,14 +41,14 @@ MARK_PROCESSED_SQL = """
 
 
 def process_batch(conn: psycopg.Connection, batch_size: int) -> tuple[list[int], int] | None:
-    """Apply the next batch in one transaction. Returns (snapshot ids, rows written), or None if nothing is left."""
+    """Runs the next batch in one transaction. Returns (snapshot ids, rows written), or None when there's nothing left."""
     with conn.transaction():
         with conn.cursor() as cur:
             ids = [row[0] for row in cur.execute(NEXT_BATCH_SQL, {"batch_size": batch_size})]
             if not ids:
                 return None
             cur.execute(UPSERT_SQL, {"snapshot_ids": ids})
-            # Inserted + updated rows; keys skipped by the "only if newer" guard aren't counted
+            # This counts inserted and updated rows. Keys skipped by the "only if newer" check don't count.
             rows_written = cur.rowcount
             cur.execute(MARK_PROCESSED_SQL, {"snapshot_ids": ids})
     return ids, rows_written
@@ -72,7 +73,7 @@ def run(conn: psycopg.Connection, batch_size: int, max_batches: int | None) -> N
                 batches, min(ids), max(ids), len(ids), f"{written:,}", time.monotonic() - batch_started,
             )
     finally:
-        # Logged even after Ctrl+C: committed batches stay committed
+        # This still runs after Ctrl+C. The batches that already committed are saved either way.
         logger.info(
             "Summary: %d batches, %d snapshots, %s rows written, %.1f s total",
             batches, snapshots, f"{rows:,}", time.monotonic() - started,
@@ -110,7 +111,7 @@ def main() -> None:
         args.batch_size,
         f"max {args.max_batches} batches" if args.max_batches else "until done",
     )
-    # autocommit: each conn.transaction() block is then its own BEGIN ... COMMIT
+    # With autocommit on, each conn.transaction() block becomes its own BEGIN ... COMMIT
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         try:
             run(conn, args.batch_size, args.max_batches)

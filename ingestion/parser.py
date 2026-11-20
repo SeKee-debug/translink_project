@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class ParseError(ValueError):
-    """The fetched bytes are not a usable GTFS-Realtime feed."""
+    """Raised when the bytes we got back aren't a usable GTFS-Realtime feed."""
 
 
 def parse_feed(raw: RawFetch) -> FeedSnapshot:

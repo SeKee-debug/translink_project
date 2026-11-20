@@ -18,7 +18,7 @@ INSERT_SNAPSHOT_SQL = """
 
 
 def save_snapshot(conn: psycopg.Connection, snapshot: FeedSnapshot) -> bool:
-    """Insert one snapshot. Returns True if a row was inserted, False if it was a duplicate."""
+    """Inserts one snapshot. Returns True if it was new, False if we already had it."""
     params = {
         "fetched_at": snapshot.fetched_at,
         "feed_timestamp": snapshot.feed_timestamp,

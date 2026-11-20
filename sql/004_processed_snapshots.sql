@@ -1,11 +1,11 @@
 -- 004_processed_snapshots.sql
--- Checklist of raw snapshots already applied to analytics.stop_arrivals. Each snapshot is
--- applied exactly once, oldest first, so times_seen and first_seen_at stay correct.
+-- Checklist of the raw snapshots that have already been applied to analytics.stop_arrivals.
+-- Each snapshot gets applied once, oldest first, so times_seen and first_seen_at stay right.
 
 CREATE TABLE IF NOT EXISTS analytics.processed_snapshots (
-    -- PRIMARY KEY: a snapshot can be ticked off only once.
-    -- ON DELETE CASCADE: when old raw snapshots are deleted (retention), their ticks go too;
-    -- without it, this foreign key would block those deletes.
+    -- PRIMARY KEY so a snapshot can only be ticked off once.
+    -- ON DELETE CASCADE so that when old raw snapshots get deleted later, their ticks go with them.
+    -- Without it the foreign key would block those deletes.
     snapshot_id   BIGINT       PRIMARY KEY
                   REFERENCES raw.feed_snapshots (snapshot_id) ON DELETE CASCADE,
     processed_at  TIMESTAMPTZ  NOT NULL DEFAULT now()

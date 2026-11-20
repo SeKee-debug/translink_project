@@ -1,4 +1,4 @@
-# Temporary smoke test for step 3a. Run from the project root:
+# Quick test I used for step 3a. Run it from the project folder:
 #   python -m ingestion.try_3a
 import logging
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    # The entry point, not config.py, decides that a bad config ends the program
+    # main gets to decide if a bad config should stop the program, not config.py
     try:
         settings = load_settings()
     except ConfigError as exc:
